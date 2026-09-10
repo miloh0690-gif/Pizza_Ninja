@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pizza Ninja · Sistema POS &amp; Caja</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='55' r='38' fill='%2300A651'/%3E%3Cpath d='M8,42 Q50,8 92,42 L92,54 Q50,34 8,54 Z' fill='%23E50914'/%3E%3Cellipse cx='36' cy='57' rx='6' ry='8' fill='%23111'/%3E%3Cellipse cx='64' cy='57' rx='6' ry='8' fill='%23111'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --ninja-red: #E5231B;
+    --ninja-red-hover: #C11A13;
+    --ninja-yellow: #FFC72C;
+    --ninja-green: #007A3D;
+    --ninja-green-bright: #00A651;
+    --ninja-dark: #0D0D10;
+    --ninja-panel: #17171B;
+    --ninja-panel-card: #201F24;
+    --ninja-border: #322F36;
+    --ninja-text: #F5F4F2;
+    --ninja-muted: #93909B;
+    --receipt-bg: #FBF9F4;
+    --receipt-text: #17171B;
+    --radius-lg: 18px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+    --shadow-main: 0 16px 40px rgba(0, 0, 0, 0.55);
+    --admin-accent: #4FA8FF;
+    --promo-accent: #C9679B;
+    --drink-accent: #2FB6C4;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background-color: var(--ninja-dark);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(229, 35, 27, 0.10), transparent 40%),
+      radial-gradient(circle at 85% 100%, rgba(0, 122, 61, 0.12), transparent 45%);
+    color: var(--ninja-text);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: var(--ninja-yellow); color: #111; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--ninja-yellow); outline-offset: 2px; }
+
+  .brand-stripe {
+    height: 6px; width: 100%;
+    background: linear-gradient(90deg, var(--ninja-red) 33.33%, var(--ninja-yellow) 33.33% 66.66%, var(--ninja-green) 66.66%);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  /* ============ ESTADO DE CONEXIÓN ============ */
+  .sync-bar {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11.5px; font-weight: 700; padding: 4px 12px;
+    border-radius: 20px; background: rgba(255,255,255,0.06);
+    color: var(--ninja-muted); cursor: default;
+  }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ninja-muted); flex-shrink: 0; }
+  .sync-bar.ok .sync-dot { background: var(--ninja-green-bright); }
+  .sync-bar.pending .sync-dot { background: var(--ninja-yellow); animation: pulse 1.2s infinite; }
+  .sync-bar.error .sync-dot { background: var(--ninja-red); }
+  .sync-bar.clickable { cursor: pointer; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* ============ PANTALLA DE ACCESO ============ */
+  .lock-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    display: flex; align-items: center; justify-content: center; padding: 20px; overflow: hidden;
+    background:
+      linear-gradient(160deg, rgba(13,13,16,0.55) 0%, rgba(13,13,16,0.86) 55%, rgba(13,13,16,0.96) 100%),
+      linear-gradient(125deg, var(--ninja-red) 0%, var(--ninja-red) 30%, var(--ninja-yellow) 48%, var(--ninja-yellow) 58%, var(--ninja-green) 76%, var(--ninja-green) 100%);
+  }
+  .lock-overlay.hidden { display: none; }
+
+  .confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .confetti span { position: absolute; width: 9px; height: 14px; opacity: 0.55; border-radius: 2px; animation: drift 9s ease-in-out infinite; }
+  .confetti span:nth-child(1) { left: 6%; top: 10%; background: var(--ninja-yellow); animation-delay: 0s; }
+  .confetti span:nth-child(2) { left: 18%; top: 70%; background: #fff; animation-delay: 1.2s; transform: rotate(20deg); }
+  .confetti span:nth-child(3) { left: 32%; top: 20%; background: var(--ninja-green); animation-delay: 2.1s; }
+  .confetti span:nth-child(4) { left: 48%; top: 82%; background: var(--ninja-red); animation-delay: 0.6s; }
+  .confetti span:nth-child(5) { left: 66%; top: 14%; background: #fff; animation-delay: 2.7s; }
+  .confetti span:nth-child(6) { left: 80%; top: 66%; background: var(--ninja-yellow); animation-delay: 1.6s; }
+  .confetti span:nth-child(7) { left: 90%; top: 26%; background: var(--ninja-green); animation-delay: 3.1s; }
+  .confetti span:nth-child(8) { left: 8%; top: 46%; background: var(--ninja-red); animation-delay: 1.9s; }
+  @keyframes drift { 0%,100% { transform: translateY(0) rotate(0deg); opacity: 0.5; } 50% { transform: translateY(-22px) rotate(25deg); opacity: 0.85; } }
+
+  .lock-card {
+    position: relative; background: rgba(23, 23, 27, 0.92); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-lg);
+    padding: 38px 32px 32px; width: 100%; max-width: 420px; text-align: center; box-shadow: var(--shadow-main);
+  }
+  .ninja-badge-icon { width: 76px; height: 76px; margin: 0 auto 14px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5)); }
+  .lock-brand { font-family: 'Bangers', cursive; font-size: 44px; line-height: 1; color: var(--ninja-yellow); letter-spacing: 2px; text-shadow: 2px 2px 0px var(--ninja-red); margin-bottom: 6px; }
+  .lock-subtitle { font-size: 12.5px; color: var(--ninja-muted); margin-bottom: 26px; font-weight: 600; letter-spacing: 0.3px; }
+
+  .form-group { margin-bottom: 16px; text-align: left; }
+  .form-group label { display: block; font-size: 11.5px; font-weight: 700; color: var(--ninja-muted); margin-bottom: 6px; letter-spacing: 0.2px; }
+  .input-field {
+    width: 100%; background: var(--ninja-panel-card); border: 1px solid var(--ninja-border); color: var(--ninja-text);
+    border-radius: var(--radius-md); padding: 12px 14px; font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.2s;
+  }
+  .input-field:focus { border-color: var(--ninja-yellow); }
+  .error-msg { color: #FF6B63; font-size: 12.5px; font-weight: 600; min-height: 20px; margin-top: 6px; text-align: center; }
+  .help-note { font-size: 11.5px; color: var(--ninja-muted); margin-top: 18px; line-height: 1.5; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--radius-md);
+    padding: 12px 20px; font-weight: 800; font-size: 13px; letter-spacing: 0.2px; cursor: pointer; transition: all 0.15s ease; gap: 8px; white-space: nowrap;
+  }
+  .btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
+  .btn:active { transform: translateY(0); }
+  .btn-red { background: var(--ninja-red); color: #FFF; }
+  .btn-yellow { background: var(--ninja-yellow); color: #17171B; }
+  .btn-green { background: var(--ninja-green-bright); color: #FFF; }
+  .btn-blue { background: var(--admin-accent); color: #0D0D10; }
+  .btn-outline { background: transparent; color: var(--ninja-text); border: 1px solid var(--ninja-border); }
+  .btn-outline:hover { border-color: var(--ninja-yellow); }
+  .btn-sm { padding: 8px 14px; font-size: 12px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; filter: none; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    padding: 12px 24px; background: var(--ninja-panel); border-bottom: 1px solid var(--ninja-border);
+    position: sticky; top: 6px; z-index: 90;
+  }
+  .brand-logo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand-badge {
+    display: flex; align-items: center; gap: 8px; font-family: 'Bangers', cursive;
+    background: linear-gradient(120deg, var(--ninja-red), var(--ninja-red) 55%, #b8140d 100%);
+    color: var(--ninja-yellow); font-size: 24px; padding: 4px 14px 4px 8px; border-radius: 10px; letter-spacing: 1px;
+  }
+  .brand-badge svg { width: 30px; height: 30px; flex-shrink: 0; }
+  .branch-tag { font-size: 12px; font-weight: 700; color: var(--ninja-yellow); background: rgba(255, 199, 44, 0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(255, 199, 44, 0.3); }
+  .branch-tag.admin-tag { color: var(--admin-accent); background: rgba(79, 168, 255, 0.1); border-color: rgba(79, 168, 255, 0.35); }
+  .top-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .clock-display { font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: var(--ninja-yellow); font-weight: 700; }
+
+  .main-layout { display: grid; grid-template-columns: 1fr 400px; min-height: calc(100vh - 71px); }
+  @media (max-width: 1024px) { .main-layout { grid-template-columns: 1fr; } }
+  .content-area { padding: 24px; }
+  .section-header { margin-bottom: 20px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .section-header h2 { font-family: 'Bangers', cursive; font-size: 30px; color: var(--ninja-yellow); letter-spacing: 1px; }
+
+  .pizza-builder { background: var(--ninja-panel); border: 1px solid var(--ninja-border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-main); margin-bottom: 20px; }
+
+  .size-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 12px; margin-bottom: 24px; }
+  .size-card { background: var(--ninja-panel-card); border: 2px solid var(--ninja-border); border-radius: var(--radius-md); padding: 16px 12px; text-align: center; cursor: pointer; transition: all 0.2s ease; }
+  .size-card:hover { border-color: var(--ninja-yellow); }
+  .size-card.active { border-color: var(--ninja-red); background: rgba(229, 35, 27, 0.12); }
+  .size-card h4 { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+  .size-card span { font-size: 12px; color: var(--ninja-muted); display: block; }
+
+  .combo-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .combo-chip {
+    background: var(--ninja-panel-card); border: 1px solid var(--ninja-border); color: var(--ninja-text);
+    border-radius: 20px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
+  }
+  .combo-chip:hover { border-color: var(--ninja-yellow); color: var(--ninja-yellow); }
+
+  .flavors-title { font-size: 13.5px; font-weight: 700; color: var(--ninja-muted); margin-bottom: 12px; }
+  .flavors-title b { color: var(--ninja-yellow); }
+  .flavor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .flavor-card { background: var(--ninja-panel-card); border: 1px solid var(--ninja-border); border-radius: var(--radius-md); padding: 14px; cursor: pointer; transition: all 0.2s; }
+  .flavor-card.selected { border-color: var(--ninja-green-bright); background: rgba(0, 166, 81, 0.15); }
+  .flavor-card h5 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .flavor-card p { font-size: 11.5px; color: var(--ninja-muted); line-height: 1.35; }
+
+  .builder-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ninja-border); padding-top: 20px; margin-top: 20px; flex-wrap: wrap; gap: 12px; }
+  .price-display { font-family: 'Bangers', cursive; font-size: 34px; color: var(--ninja-yellow); }
+
+  /* Promociones y Bebidas */
+  .extras-panel { background: var(--ninja-panel); border: 1px solid var(--ninja-border); border-radius: var(--radius-lg); padding: 22px; box-shadow: var(--shadow-main); margin-bottom: 20px; }
+  .extras-panel + .extras-panel { margin-top: 20px; }
+  .extras-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .extras-title.promo { color: var(--promo-accent); }
+  .extras-title.drink { color: var(--drink-accent); }
+  .extras-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .extra-card {
+    background: var(--ninja-panel-card); border: 1px solid var(--ninja-border); border-radius: var(--radius-md);
+    padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .extra-card .name { font-size: 13.5px; font-weight: 700; }
+  .extra-card .desc { font-size: 11px; color: var(--ninja-muted); line-height: 1.3; flex-grow: 1; }
+  .extra-card .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .extra-card .price { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+  .extra-card.promo .price { color: var(--promo-accent); }
+  .extra-card.drink .price { color: var(--drink-accent); }
+  .extra-add-btn { border: none; border-radius: var(--radius-sm); padding: 7px 12px; font-weight: 800; font-size: 11.5px; cursor: pointer; }
+  .extra-add-btn.promo { background: var(--promo-accent); color: #fff; }
+  .extra-add-btn.drink { background: var(--drink-accent); color: #08272a; }
+  .extras-empty { font-size: 12px; color: var(--ninja-muted); }
+
+  .ticket-panel { background: #131316; border-left: 1px solid var(--ninja-border); padding: 24px; display: flex; flex-direction: column; }
+  .receipt-paper { background: var(--receipt-bg); color: var(--receipt-text); border-radius: var(--radius-md); padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 12px; flex-grow: 1; overflow-y: auto; min-height: 180px; box-shadow: 0 4px 20px rgba(0,0,0,0.35); margin-bottom: 16px; }
+  .receipt-header { text-align: center; border-bottom: 2px dashed #D8D3C6; padding-bottom: 12px; margin-bottom: 12px; }
+  .receipt-header h3 { font-family: 'Bangers', cursive; font-size: 26px; color: var(--ninja-red); letter-spacing: 1px; }
+  .receipt-item { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .receipt-item-note { font-size: 10px; color: #706C63; margin-left: 12px; margin-bottom: 6px; }
+  .remove-item-btn { color: var(--ninja-red); cursor: pointer; font-weight: bold; border: none; background: none; margin-left: 6px; }
+  .receipt-total { border-top: 2px dashed #D8D3C6; padding-top: 12px; margin-top: 12px; display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 200; display: none; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+  .modal-backdrop.open { display: flex; }
+  .modal-content { background: var(--ninja-panel); border: 1px solid var(--ninja-border); border-radius: var(--radius-lg); width: 100%; max-width: 980px; padding: 30px; box-shadow: var(--shadow-main); }
+  .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
+  .modal-header h2 { font-family: 'Bangers', cursive; font-size: 30px; color: var(--ninja-yellow); }
+  .modal-header p { font-size: 12.5px; color: var(--ninja-muted); margin-top: 4px; }
+  .close-modal-btn { background: none; border: none; color: var(--ninja-muted); font-size: 24px; cursor: pointer; line-height: 1; }
+  .close-modal-btn:hover { color: var(--ninja-text); }
+
+  .filters-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; align-items: flex-end; }
+  .filters-row .form-group { margin-bottom: 0; min-width: 190px; }
+
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin: 20px 0; }
+  .metric-card { background: var(--ninja-panel-card); border: 1px solid var(--ninja-border); border-radius: var(--radius-md); padding: 16px; }
+  .metric-card .title { font-size: 11px; color: var(--ninja-muted); font-weight: 700; margin-bottom: 6px; }
+  .metric-card .value { font-family: 'Bangers', cursive; font-size: 30px; color: var(--ninja-green-bright); }
+
+  .branch-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .branch-chip { background: var(--ninja-panel-card); border: 1px solid var(--ninja-border); border-radius: var(--radius-md); padding: 14px; border-left: 4px solid var(--ninja-yellow); }
+  .branch-chip .name { font-size: 13px; font-weight: 800; margin-bottom: 6px; }
+  .branch-chip .amount { font-family: 'Bangers', cursive; font-size: 22px; color: var(--ninja-yellow); }
+  .branch-chip .sub { font-size: 11px; color: var(--ninja-muted); margin-top: 2px; }
+
+  .table-wrap { overflow-x: auto; }
+  .data-table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 10px; min-width: 640px; }
+  .data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--ninja-border); }
+  .data-table th { background: var(--ninja-panel-card); color: var(--ninja-yellow); font-size: 11px; }
+  .data-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+  .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--ninja-border); align-items: center; }
+
+  .admin-view { padding: 28px 32px 60px; max-width: 1200px; margin: 0 auto; }
+  .admin-hero { margin-bottom: 22px; }
+  .admin-hero h2 { font-family: 'Bangers', cursive; font-size: 34px; color: var(--admin-accent); letter-spacing: 1px; }
+  .admin-hero p { font-size: 13px; color: var(--ninja-muted); margin-top: 4px; max-width: 640px; line-height: 1.5; }
+
+  .empty-state { text-align: center; color: var(--ninja-muted); padding: 40px 10px; font-size: 13px; }
+
+  #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--ninja-green-bright); color: white; padding: 12px 28px; border-radius: 30px; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 400; opacity: 0; max-width: 90vw; text-align: center; }
+  #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  #toast.error { background: var(--ninja-red); }
+
+  .hidden-block { display: none !important; }
+
+  @media (max-width: 640px) {
+    .modal-content { padding: 20px; }
+    .admin-view { padding: 20px 16px 50px; }
+    .topbar { padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="brand-stripe"></div>
+
+<!-- ============ PANTALLA DE ACCESO ============ -->
+<div class="lock-overlay" id="lockScreen">
+  <div class="confetti"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="lock-card">
+    <svg class="ninja-badge-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="56" r="36" fill="#00A651"/>
+      <path d="M8,42 Q50,6 92,42 L92,56 Q50,34 8,56 Z" fill="#E5231B"/>
+      <path d="M6,40 L-6,58 L12,52 Z" fill="#E5231B"/>
+      <path d="M94,40 L106,58 L88,52 Z" fill="#E5231B"/>
+      <ellipse cx="36" cy="58" rx="6.5" ry="8.5" fill="#111"/>
+      <ellipse cx="64" cy="58" rx="6.5" ry="8.5" fill="#111"/>
+      <circle cx="38" cy="55" r="1.6" fill="#fff"/>
+      <circle cx="66" cy="55" r="1.6" fill="#fff"/>
+    </svg>
+    <div class="lock-brand">PIZZA NINJA</div>
+    <p class="lock-subtitle">SISTEMA POS · CONTROL DE VENTAS Y CAJA</p>
+
+    <div class="form-group">
+      <label>Sucursal / Acceso</label>
+      <select id="lockBranch" class="input-field"><option value="">Selecciona una opción...</option></select>
+    </div>
+
+    <div class="form-group">
+      <label>Contraseña de Acceso</label>
+      <input type="password" id="lockPass" class="input-field" placeholder="••••" onkeydown="if(event.key==='Enter') unlockSystem()">
+    </div>
+
+    <div class="error-msg" id="lockError"></div>
+
+    <button class="btn btn-yellow" onclick="unlockSystem()" style="width: 100%; margin-top: 4px;">Ingresar al Sistema</button>
+
+    <p class="help-note" id="lockConnectionNote">Conectando con el catálogo de Google Sheets…</p>
+  </div>
+</div>
+
+<!-- ============ BARRA SUPERIOR ============ -->
+<header class="topbar" id="topbar" style="display:none;">
+  <div class="brand-logo">
+    <div class="brand-badge">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="56" r="36" fill="#00A651"/>
+        <path d="M8,42 Q50,6 92,42 L92,56 Q50,34 8,56 Z" fill="#FFC72C"/>
+        <ellipse cx="36" cy="58" rx="6.5" ry="8.5" fill="#111"/>
+        <ellipse cx="64" cy="58" rx="6.5" ry="8.5" fill="#111"/>
+      </svg>
+      NINJA
+    </div>
+    <div class="branch-tag" id="currentBranchDisplay">—</div>
+    <div class="sync-bar" id="syncBar" onclick="trySyncPending()"><span class="sync-dot"></span><span id="syncBarText">Sin conexión a Sheets</span></div>
+  </div>
+
+  <div class="top-actions">
+    <div class="clock-display" id="clock">00:00:00</div>
+    <button class="btn btn-outline btn-sm" id="reportBtn" onclick="openReportModal()">Cierre de Caja</button>
+    <button class="btn btn-red btn-sm" onclick="lockSystem()">Salir</button>
+  </div>
+</header>
+
+<!-- ============ LAYOUT DE VENTAS (ROL: SUCURSAL) ============ -->
+<main class="main-layout" id="branchLayout" style="display:none;">
+
+  <section class="content-area">
+    <div class="section-header"><h2>Arma tu Pizza Ninja</h2></div>
+
+    <div class="pizza-builder">
+      <div class="size-selector" id="sizeSelector"></div>
+
+      <div class="flavors-title" id="comboHint">Selección rápida:</div>
+      <div class="combo-row" id="comboRow"></div>
+
+      <div class="flavors-title" id="flavorHint">Selecciona hasta <b>1 sabor</b>:</div>
+      <div class="flavor-grid" id="flavorGrid"></div>
+
+      <div class="form-group">
+        <label>Notas Especiales / Modificaciones</label>
+        <input type="text" id="pizzaNotes" class="input-field" placeholder="Ej. Sin cebolla, masa bien tostada...">
+      </div>
+
+      <div class="builder-footer">
+        <div class="price-display" id="builderPrice">Bs. 0.00</div>
+        <button class="btn btn-yellow" onclick="addPizzaToCart()">+ Agregar a la Comanda</button>
+      </div>
+    </div>
+
+    <div class="extras-panel">
+      <div class="extras-title promo">🎉 Promociones fijas</div>
+      <div class="extras-grid" id="promoGrid"><p class="extras-empty">Cargando promociones…</p></div>
+    </div>
+
+    <div class="extras-panel">
+      <div class="extras-title drink">🥤 Bebidas</div>
+      <div class="extras-grid" id="drinkGrid"><p class="extras-empty">Cargando bebidas…</p></div>
+    </div>
+  </section>
+
+  <aside class="ticket-panel">
+    <div class="form-group">
+      <label>Cliente</label>
+      <input type="text" id="clientName" class="input-field" placeholder="Nombre del cliente">
+    </div>
+
+    <div class="form-group">
+      <label>Nombre de quien atiende, entrega y cobra *</label>
+      <input type="text" id="cashierName" class="input-field" placeholder="Ej. María Quispe" required>
+    </div>
+
+    <div class="form-group">
+      <label>Forma de Pago</label>
+      <select id="paymentMethod" class="input-field">
+        <option value="Efectivo">Efectivo</option>
+        <option value="QR / Transferencia">QR / Transferencia</option>
+        <option value="Tarjeta">Tarjeta de Débito/Crédito</option>
+      </select>
+    </div>
+
+    <div class="receipt-paper" id="receipt">
+      <div class="receipt-header">
+        <h3>PIZZA NINJA</h3>
+        <div id="receiptBranchText" style="font-size: 11px; font-weight: bold;">—</div>
+      </div>
+      <div id="cartItems"><p style="text-align: center; color: #888; margin-top: 30px;">Comanda vacía</p></div>
+      <div class="receipt-total"><span>TOTAL:</span><span id="cartTotal">Bs. 0.00</span></div>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+      <button class="btn btn-outline" onclick="clearCart()" style="flex: 1;">Limpiar</button>
+      <button class="btn btn-green" onclick="processOrder()" style="flex: 2;">Cobrar e Imprimir</button>
+    </div>
+  </aside>
+</main>
+
+<!-- ============ VISTA DE GERENCIA (ROL: ADMIN) ============ -->
+<div class="admin-view hidden-block" id="adminView">
+  <div class="admin-hero">
+    <h2>Reporte Consolidado de Gerencia</h2>
+    <p>Datos leídos directamente de la hoja "Ventas" en Google Sheets. Cada sucursal solo ve su propio historial; este panel existe para comparar el desempeño general sin exponer los datos entre sucursales.</p>
+  </div>
+
+  <div class="filters-row">
+    <div class="form-group">
+      <label>Período</label>
+      <select id="adminFilterPeriod" class="input-field" onchange="renderAdminReport()">
+        <option value="day">Hoy</option>
+        <option value="week">Últimos 7 días</option>
+        <option value="month">Este Mes</option>
+        <option value="year">Este Año</option>
+        <option value="all">Todo el Historial</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Sucursal</label>
+      <select id="adminFilterBranch" class="input-field" onchange="renderAdminReport()">
+        <option value="all">Todas las sucursales</option>
+      </select>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="loadVentasFromSheet(true)">↻ Actualizar datos</button>
+  </div>
+
+  <div class="metrics-grid">
+    <div class="metric-card"><div class="title">Total Recaudado</div><div class="value" id="adminTotalRevenue">Bs. 0.00</div></div>
+    <div class="metric-card"><div class="title">Total Pedidos</div><div class="value" id="adminTotalOrders" style="color: var(--ninja-yellow);">0</div></div>
+    <div class="metric-card"><div class="title">Ticket Promedio</div><div class="value" id="adminAvgTicket" style="color: var(--ninja-text);">Bs. 0.00</div></div>
+  </div>
+
+  <h3 style="font-size: 13px; color: var(--ninja-muted); margin-bottom: 10px; font-weight: 700;">Desglose por sucursal</h3>
+  <div class="branch-breakdown" id="branchBreakdown"></div>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Fecha / Hora</th><th>Sucursal</th><th>Atendido y cobrado por</th><th>Cliente</th><th>Método</th><th>Total</th></tr></thead>
+      <tbody id="adminTableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="modal-actions">
+    <button class="btn btn-outline btn-sm" onclick="exportBackup('all')">Exportar copia local (JSON)</button>
+    <button class="btn btn-red btn-sm" onclick="confirmClearHistory()">Vaciar caché local del navegador</button>
+  </div>
+</div>
+
+<!-- ============ MODAL: CIERRE DE CAJA (ROL: SUCURSAL) ============ -->
+<div class="modal-backdrop" id="reportModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div><h2>Cierre de Caja</h2><p id="reportBranchLabel">Reporte de ventas de tu sucursal</p></div>
+      <button class="close-modal-btn" onclick="closeReportModal()">&times;</button>
+    </div>
+
+    <div class="filters-row">
+      <div class="form-group">
+        <label>Período del Reporte</label>
+        <select id="reportFilter" class="input-field" onchange="renderReport()">
+          <option value="day">Ventas de Hoy</option>
+          <option value="week">Últimos 7 días</option>
+          <option value="month">Este Mes</option>
+          <option value="year">Este Año</option>
+        </select>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="loadVentasFromSheet(true)">↻ Actualizar datos</button>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card"><div class="title">Total Recaudado</div><div class="value" id="totalRevenue">Bs. 0.00</div></div>
+      <div class="metric-card"><div class="title">Total Pedidos</div><div class="value" id="totalOrders" style="color: var(--ninja-yellow);">0</div></div>
+      <div class="metric-card"><div class="title">Ticket Promedio</div><div class="value" id="avgTicket" style="color: var(--ninja-text);">Bs. 0.00</div></div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Fecha / Hora</th><th>Atendido y cobrado por</th><th>Cliente</th><th>Método</th><th>Total</th></tr></thead>
+        <tbody id="reportTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-sm" onclick="exportBackup('branch')">Exportar mis ventas (JSON)</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">Operación ejecutada con éxito</div>
+
+<!-- ============ LÓGICA (JavaScript puro, sin librerías externas, sin Firebase) ============ -->
+<script>
+  // =================================================================
+  // CONEXIÓN A GOOGLE SHEETS Y CONTRASEÑAS DE SUCURSAL
+  // Ya NO viven aquí. Todo eso se guarda en el servidor (.env) y se
+  // consulta a través de /api/proxy y /api/login. Ver server.js.
+  // =================================================================
+
+  // ---------------------------------------------------------------
+  // ACCESOS POR SUCURSAL: la lista de nombres/roles se carga desde
+  // el servidor (loadBranches). Las contraseñas nunca llegan al
+  // navegador; el servidor valida y solo responde ok/error + rol.
+  // ---------------------------------------------------------------
+  let BRANCHES = {};
+
+  async function loadBranches() {
+    const select = document.getElementById('lockBranch');
+    try {
+      const res = await fetch('/api/branches');
+      const data = await res.json();
+      data.forEach(b => { BRANCHES[b.name] = { role: b.role }; });
+      Object.keys(BRANCHES).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      document.getElementById('lockError').innerText = 'No se pudo cargar la lista de sucursales. Verifica el servidor.';
+    }
+  }
+
+  // Catálogo de respaldo: se usa SOLO si no se puede conectar con Google
+  // Sheets (por ejemplo, sin internet). Edítalo aquí si quieres cambiar
+  // el respaldo, pero lo normal es editar todo desde la hoja "Productos".
+  const FALLBACK_PRODUCTS = {
+    tamanos: [
+      { ID: 1, Nombre: "Personal", Precio: 25, MaxSabores: 1, Orden: 1 },
+      { ID: 2, Nombre: "Mediana",  Precio: 45, MaxSabores: 2, Orden: 2 },
+      { ID: 3, Nombre: "Familiar", Precio: 70, MaxSabores: 2, Orden: 3 }
+    ],
+    sabores: [
+      { ID: 1, Nombre: "Margarita", Descripcion: "Salsa de tomate casera, queso mozzarella fresco y albahaca.", Orden: 1 },
+      { ID: 2, Nombre: "Pepperoni", Descripcion: "Doble queso mozzarella y rodajas de pepperoni premium.", Orden: 2 },
+      { ID: 3, Nombre: "Hawaiana",  Descripcion: "Jamón artesanal, piña picada y queso abundante.", Orden: 3 },
+      { ID: 4, Nombre: "Carnívora", Descripcion: "Pepperoni, carne molida, tocino crujiente y jamón.", Orden: 4 }
+    ],
+    combos: [
+      { ID: 1, Nombre: "La Clásica", Sabores: "Margarita", Orden: 1 },
+      { ID: 2, Nombre: "La Favorita", Sabores: "Pepperoni", Orden: 2 },
+      { ID: 3, Nombre: "Mitad y Mitad", Sabores: "Pepperoni, Hawaiana", Orden: 3 }
+    ],
+    promociones: [
+      { ID: 1, Nombre: "Combo Ninja Dúo", Descripcion: "2 Pizzas Personales + 1 Bebida (ejemplo, edítalo en la hoja).", Precio: 60, Orden: 1 }
+    ],
+    bebidas: [
+      { ID: 1, Nombre: "Coca Cola 500ml", Precio: 8, Orden: 1 },
+      { ID: 2, Nombre: "Agua 500ml", Precio: 5, Orden: 2 },
+      { ID: 3, Nombre: "Jugo Natural", Precio: 10, Orden: 3 }
+    ]
+  };
+
+  const LOCAL_KEY = "pizza_ninja_sales_cache";
+  const PENDING_KEY = "pizza_ninja_pending_sync";
+
+  // --- ESTADO GLOBAL ---
+  let currentBranch = null;
+  let currentRole = null;
+  let PRODUCTS = null;
+  let selectedSize = null;
+  let selectedPrice = 0;
+  let maxFlavors = 1;
+  let selectedFlavors = [];
+  let cart = [];
+  let salesCache = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
+  let pendingSync = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
+
+  function savePendingSync() { localStorage.setItem(PENDING_KEY, JSON.stringify(pendingSync)); }
+  function saveSalesCache() { localStorage.setItem(LOCAL_KEY, JSON.stringify(salesCache)); }
+
+  setInterval(() => {
+    const el = document.getElementById('clock');
+    if (el) el.innerText = new Date().toLocaleTimeString();
+  }, 1000);
+
+  // --- CARGA DEL CATÁLOGO (a través del servidor proxy local) ---
+  async function loadProducts() {
+    const note = document.getElementById('lockConnectionNote');
+    try {
+      // Apuntamos al servidor proxy local en lugar de la URL pública de Google Sheets
+      const res = await fetch('/api/proxy?action=productos');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      PRODUCTS = data;
+      if (note) note.innerText = "Catálogo cargado de forma segura a través del servidor.";
+      updateSyncBar('ok', 'Conectado de forma segura');
+    } catch (err) {
+      PRODUCTS = FALLBACK_PRODUCTS;
+      if (note) note.innerText = "Usando catálogo de respaldo (verifica que el servidor proxy esté encendido).";
+      updateSyncBar('error', 'Sin conexión al servidor proxy');
+    }
+  }
+
+  function updateSyncBar(status, text) {
+    const bar = document.getElementById('syncBar');
+    const label = document.getElementById('syncBarText');
+    if (!bar) return;
+    bar.classList.remove('ok', 'pending', 'error', 'clickable');
+    bar.classList.add(status);
+    if (pendingSync.length > 0) { bar.classList.add('clickable'); }
+    label.innerText = pendingSync.length > 0 ? `${text} · ${pendingSync.length} pendiente(s)` : text;
+  }
+
+  // --- ACCESO Y SEGURIDAD POR SUCURSAL ---
+  async function unlockSystem() {
+    const branch = document.getElementById('lockBranch').value;
+    const pass = document.getElementById('lockPass').value;
+    const errorEl = document.getElementById('lockError');
+
+    if (!branch) { errorEl.innerText = 'Selecciona una sucursal o el acceso de Gerencia.'; return; }
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, password: pass })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        errorEl.innerText = 'Contraseña incorrecta para el acceso seleccionado.';
+        return;
+      }
+      currentBranch = branch;
+      currentRole = data.role;
+      document.getElementById('lockPass').value = '';
+      errorEl.innerText = '';
+      document.getElementById('lockScreen').classList.add('hidden');
+      if (!PRODUCTS) await loadProducts();
+      renderCatalog();
+      enterSystem();
+      trySyncPending();
+    } catch (err) {
+      errorEl.innerText = 'No se pudo verificar el acceso. Revisa tu conexión con el servidor.';
+    }
+  }
+
+  function enterSystem() {
+    document.getElementById('topbar').style.display = 'flex';
+
+    if (currentRole === 'admin') {
+      document.getElementById('branchLayout').style.display = 'none';
+      document.getElementById('adminView').classList.remove('hidden-block');
+      document.getElementById('reportBtn').classList.add('hidden-block');
+      const tag = document.getElementById('currentBranchDisplay');
+      tag.innerText = currentBranch; tag.classList.add('admin-tag');
+      populateAdminBranchFilter();
+      loadVentasFromSheet(true);
+    } else {
+      document.getElementById('adminView').classList.add('hidden-block');
+      document.getElementById('branchLayout').style.display = 'grid';
+      document.getElementById('reportBtn').classList.remove('hidden-block');
+      const tag = document.getElementById('currentBranchDisplay');
+      tag.innerText = currentBranch; tag.classList.remove('admin-tag');
+      document.getElementById('receiptBranchText').innerText = currentBranch.toUpperCase();
+    }
+  }
+
+  function lockSystem() {
+    document.getElementById('lockScreen').classList.remove('hidden');
+    document.getElementById('topbar').style.display = 'none';
+    document.getElementById('branchLayout').style.display = 'none';
+    document.getElementById('adminView').classList.add('hidden-block');
+    closeReportModal();
+    clearCart();
+    currentBranch = null;
+    currentRole = null;
+  }
+
+  // ---------------------------------------------------------------
+  // RENDERIZADO DEL CATÁLOGO (tamaños, combos rápidos, sabores,
+  // promociones y bebidas) a partir de PRODUCTS, ya sea de Sheets
+  // o del catálogo de respaldo.
+  // ---------------------------------------------------------------
+  function renderCatalog() {
+    renderSizes();
+    renderCombos();
+    renderFlavors();
+    renderPromotions();
+    renderDrinks();
+  }
+
+  function sortByOrden(list) { return [...list].sort((a, b) => (Number(a.Orden) || 0) - (Number(b.Orden) || 0)); }
+
+  function renderSizes() {
+    const container = document.getElementById('sizeSelector');
+    const sizes = sortByOrden(PRODUCTS.tamanos || []);
+    container.innerHTML = sizes.map((s, i) => `
+      <div class="size-card ${i === 0 ? 'active' : ''}" data-size="${s.Nombre}"
+           onclick="selectSize('${s.Nombre.replace(/'/g,"\\'")}', ${Number(s.Precio)}, ${Number(s.MaxSabores)}, this)">
+        <h4>${s.Nombre}</h4>
+        <span>Hasta ${s.MaxSabores} sabor(es) · Bs. ${Number(s.Precio).toFixed(2)}</span>
+      </div>
+    `).join('');
+    if (sizes.length > 0) {
+      selectedSize = sizes[0].Nombre;
+      selectedPrice = Number(sizes[0].Precio);
+      maxFlavors = Number(sizes[0].MaxSabores);
+      updateBuilderPrice();
+    }
+  }
+
+  function renderCombos() {
+    const wrap = document.getElementById('comboRow');
+    const hint = document.getElementById('comboHint');
+    const combos = sortByOrden(PRODUCTS.combos || []);
+    if (combos.length === 0) { wrap.innerHTML = ''; hint.classList.add('hidden-block'); return; }
+    hint.classList.remove('hidden-block');
+    wrap.innerHTML = combos.map(c => `
+      <button type="button" class="combo-chip" onclick='applyCombo(${JSON.stringify(c.Sabores || "")})'>${c.Nombre}</button>
+    `).join('');
+  }
+
+  function applyCombo(saboresStr) {
+    const wanted = String(saboresStr).split(',').map(s => s.trim()).filter(Boolean);
+    document.querySelectorAll('.flavor-card').forEach(el => el.classList.remove('selected'));
+    selectedFlavors = [];
+    let trimmed = false;
+    wanted.forEach(name => {
+      if (selectedFlavors.length < maxFlavors) {
+        selectedFlavors.push(name);
+      } else {
+        trimmed = true;
+      }
+    });
+    document.querySelectorAll('.flavor-card').forEach(el => {
+      if (selectedFlavors.includes(el.dataset.flavor)) el.classList.add('selected');
+    });
+    if (trimmed) showToast(`Este combo tiene más sabores de los que permite ${selectedSize}; se ajustó automáticamente`, true);
+    else showToast('Combo aplicado');
+  }
+
+  function renderFlavors() {
+    const grid = document.getElementById('flavorGrid');
+    const flavors = sortByOrden(PRODUCTS.sabores || []);
+    grid.innerHTML = flavors.map(f => `
+      <div class="flavor-card" data-flavor="${f.Nombre}" onclick="toggleFlavor('${f.Nombre.replace(/'/g,"\\'")}', this)">
+        <h5>${f.Nombre}</h5>
+        <p>${f.Descripcion || ''}</p>
+      </div>
+    `).join('');
+  }
+
+  function renderPromotions() {
+    const grid = document.getElementById('promoGrid');
+    const promos = sortByOrden(PRODUCTS.promociones || []);
+    if (promos.length === 0) { grid.innerHTML = '<p class="extras-empty">No hay promociones activas por ahora.</p>'; return; }
+    grid.innerHTML = promos.map(p => `
+      <div class="extra-card promo">
+        <div class="name">${p.Nombre}</div>
+        <div class="desc">${p.Descripcion || ''}</div>
+        <div class="row">
+          <span class="price">Bs. ${Number(p.Precio).toFixed(2)}</span>
+          <button class="extra-add-btn promo" onclick='addExtraToCart(${JSON.stringify({title: p.Nombre, price: Number(p.Precio), type: "promocion"})})'>Agregar</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderDrinks() {
+    const grid = document.getElementById('drinkGrid');
+    const drinks = sortByOrden(PRODUCTS.bebidas || []);
+    if (drinks.length === 0) { grid.innerHTML = '<p class="extras-empty">No hay bebidas cargadas.</p>'; return; }
+    grid.innerHTML = drinks.map(d => `
+      <div class="extra-card drink">
+        <div class="name">${d.Nombre}</div>
+        <div class="row">
+          <span class="price">Bs. ${Number(d.Precio).toFixed(2)}</span>
+          <button class="extra-add-btn drink" onclick='addExtraToCart(${JSON.stringify({title: d.Nombre, price: Number(d.Precio), type: "bebida"})})'>Agregar</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // --- CONSTRUCTOR DE PIZZAS ---
+  function selectSize(name, price, maxF, element) {
+    document.querySelectorAll('.size-card').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    selectedSize = name; selectedPrice = price; maxFlavors = maxF; selectedFlavors = [];
+    document.querySelectorAll('.flavor-card').forEach(el => el.classList.remove('selected'));
+    document.getElementById('flavorHint').innerHTML = `Selecciona hasta <b>${maxFlavors} sabor(es)</b>:`;
+    updateBuilderPrice();
+  }
+
+  function toggleFlavor(flavorName, element) {
+    const index = selectedFlavors.indexOf(flavorName);
+    if (index > -1) {
+      selectedFlavors.splice(index, 1);
+      element.classList.remove('selected');
+    } else if (selectedFlavors.length < maxFlavors) {
+      selectedFlavors.push(flavorName);
+      element.classList.add('selected');
+    } else {
+      showToast(`Límite alcanzado: máximo ${maxFlavors} sabor(es) en tamaño ${selectedSize}`, true);
+    }
+  }
+
+  function updateBuilderPrice() { document.getElementById('builderPrice').innerText = `Bs. ${selectedPrice.toFixed(2)}`; }
+
+  function addPizzaToCart() {
+    if (selectedFlavors.length === 0) { showToast('Selecciona al menos 1 sabor', true); return; }
+    const notes = document.getElementById('pizzaNotes').value.trim();
+    cart.push({ type: 'pizza', title: `Pizza ${selectedSize} (${selectedFlavors.join(' / ')})`, price: selectedPrice, notes });
+    document.getElementById('pizzaNotes').value = '';
+    renderCart();
+    showToast('¡Agregado a la comanda!');
+  }
+
+  function addExtraToCart(item) {
+    cart.push({ type: item.type, title: item.title, price: item.price, notes: '' });
+    renderCart();
+    showToast('¡Agregado a la comanda!');
+  }
+
+  // --- COMANDA / TICKET ---
+  function renderCart() {
+    const container = document.getElementById('cartItems');
+    const totalEl = document.getElementById('cartTotal');
+
+    if (cart.length === 0) {
+      container.innerHTML = '<p style="text-align: center; color: #888; margin-top: 30px;">Comanda vacía</p>';
+      totalEl.innerText = 'Bs. 0.00';
+      return;
+    }
+
+    let html = ''; let total = 0;
+    cart.forEach((item, index) => {
+      total += item.price;
+      html += `
+        <div class="receipt-item">
+          <span>1x ${item.title}</span>
+          <span>Bs. ${item.price.toFixed(2)} <button class="remove-item-btn" onclick="removeFromCart(${index})">✕</button></span>
+        </div>
+        ${item.notes ? `<div class="receipt-item-note">* ${item.notes}</div>` : ''}
+      `;
+    });
+
+    container.innerHTML = html;
+    totalEl.innerText = `Bs. ${total.toFixed(2)}`;
+  }
+
+  function removeFromCart(index) { cart.splice(index, 1); renderCart(); }
+
+  function clearCart() {
+    cart = [];
+    const client = document.getElementById('clientName');
+    if (client) client.value = '';
+    renderCart();
+  }
+
+  async function processOrder() {
+    const cashier = document.getElementById('cashierName').value.trim();
+    if (!cashier) { showToast('Ingresa el nombre de quien atiende y cobra', true); document.getElementById('cashierName').focus(); return; }
+    if (cart.length === 0) { showToast('La comanda se encuentra vacía', true); return; }
+
+    const total = cart.reduce((sum, item) => sum + item.price, 0);
+    const detalle = cart.map(i => `1x ${i.title}${i.notes ? ' (' + i.notes + ')' : ''}`).join('; ');
+
+    const order = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      fecha: new Date().toISOString(),
+      sucursal: currentBranch,
+      atendidoPor: cashier,
+      cliente: document.getElementById('clientName').value.trim() || 'Cliente General',
+      metodoPago: document.getElementById('paymentMethod').value,
+      detalle: detalle,
+      cantidadItems: cart.length,
+      total: total
+    };
+
+    // Caché local inmediata para que el Cierre de Caja se sienta instantáneo
+    salesCache.push(order);
+    saveSalesCache();
+
+    showToast('Venta registrada, sincronizando de forma segura...');
+    clearCart();
+    document.getElementById('cashierName').value = cashier;
+
+    await sendSaleToSheet(order);
+  }
+
+  // ---------------------------------------------------------------
+  // ENVÍO DE VENTAS A TRAVÉS DEL SERVIDOR PROXY LOCAL
+  // ---------------------------------------------------------------
+  async function sendSaleToSheet(order) {
+    try {
+      const res = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'registrar_venta', venta: order })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      updateSyncBar('ok', 'Conectado de forma segura');
+      showToast('Venta sincronizada de forma segura');
+    } catch (err) {
+      queuePending(order);
+      updateSyncBar('pending', 'Ventas pendientes de sincronizar');
+      showToast('Sin conexión con el servidor: venta guardada localmente', true);
+    }
+  }
+
+  function queuePending(order) {
+    if (!pendingSync.some(p => p.id === order.id)) {
+      pendingSync.push(order);
+      savePendingSync();
+    }
+  }
+
+  async function trySyncPending() {
+    if (pendingSync.length === 0) { updateSyncBar('ok', 'Conectado de forma segura'); return; }
+    updateSyncBar('pending', 'Sincronizando...');
+    const stillPending = [];
+    for (const order of pendingSync) {
+      try {
+        const res = await fetch('/api/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'registrar_venta', venta: order })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+      } catch (err) {
+        stillPending.push(order);
+      }
+    }
+    pendingSync = stillPending;
+    savePendingSync();
+    if (pendingSync.length === 0) { updateSyncBar('ok', 'Conectado de forma segura'); showToast('Ventas pendientes sincronizadas'); }
+    else { updateSyncBar('pending', 'Ventas pendientes de sincronizar'); }
+  }
+
+  // --- LECTURA DE VENTAS A TRAVÉS DEL SERVIDOR PROXY LOCAL (para los reportes) ---
+  async function loadVentasFromSheet(showFeedback) {
+    try {
+      const sucursalParam = currentRole === 'admin' ? 'all' : encodeURIComponent(currentBranch);
+      const res = await fetch(`/api/proxy?action=ventas&sucursal=${sucursalParam}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      salesCache = normalizeSheetSales(data);
+      saveSalesCache();
+      updateSyncBar('ok', 'Conectado de forma segura');
+      if (showFeedback) showToast('Datos actualizados de forma segura');
+    } catch (err) {
+      updateSyncBar('error', 'No se pudo conectar al servidor, usando caché local');
+      if (showFeedback) showToast('No se pudo conectar con el servidor; se muestra la última caché local', true);
+    }
+    if (currentRole === 'admin') renderAdminReport(); else renderReport();
+  }
+
+  function normalizeSheetSales(rows) {
+    return rows.map(r => ({
+      id: r["ID Venta"],
+      fecha: r["Fecha"],
+      sucursal: r["Sucursal"],
+      atendidoPor: r["Atendido y Cobrado por"],
+      cliente: r["Cliente"],
+      metodoPago: r["Metodo de Pago"],
+      detalle: r["Detalle del Pedido"],
+      cantidadItems: r["Cantidad de Items"],
+      total: Number(r["Total (Bs)"]) || 0
+    }));
+  }
+
+  // --- FILTRO POR PERÍODO (compartido entre reporte de sucursal y de gerencia) ---
+  function filterByPeriod(list, period) {
+    if (period === 'all') return list;
+    const now = new Date();
+    return list.filter(sale => {
+      const saleDate = new Date(sale.fecha);
+      if (period === 'day') return saleDate.toDateString() === now.toDateString();
+      if (period === 'week') { const diffDays = (now - saleDate) / 86400000; return diffDays >= 0 && diffDays <= 7; }
+      if (period === 'month') return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+      if (period === 'year') return saleDate.getFullYear() === now.getFullYear();
+      return true;
+    });
+  }
+
+  // --- CIERRE DE CAJA: SOLO LA PROPIA SUCURSAL ---
+  function openReportModal() {
+    document.getElementById('reportBranchLabel').innerText = `Reporte de ventas de ${currentBranch}`;
+    document.getElementById('reportModal').classList.add('open');
+    loadVentasFromSheet(false);
+  }
+
+  function closeReportModal() { document.getElementById('reportModal').classList.remove('open'); }
+
+  function renderReport() {
+    const filter = document.getElementById('reportFilter').value;
+    const ownSales = salesCache.filter(s => s.sucursal === currentBranch);
+    const filtered = filterByPeriod(ownSales, filter);
+
+    const totalRev = filtered.reduce((s, o) => s + o.total, 0);
+    const count = filtered.length;
+    const avg = count > 0 ? totalRev / count : 0;
+
+    document.getElementById('totalRevenue').innerText = `Bs. ${totalRev.toFixed(2)}`;
+    document.getElementById('totalOrders').innerText = count;
+    document.getElementById('avgTicket').innerText = `Bs. ${avg.toFixed(2)}`;
+
+    const tbody = document.getElementById('reportTableBody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--ninja-muted);">No hay transacciones registradas en este período.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = [...filtered].reverse().map(sale => `
+      <tr>
+        <td>${new Date(sale.fecha).toLocaleString()}</td>
+        <td><b>${sale.atendidoPor}</b></td>
+        <td>${sale.cliente}</td>
+        <td>${sale.metodoPago}</td>
+        <td style="color: var(--ninja-green-bright); font-weight: bold;">Bs. ${sale.total.toFixed(2)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // --- REPORTE CONSOLIDADO: SOLO ROL GERENCIA ---
+  function populateAdminBranchFilter() {
+    const select = document.getElementById('adminFilterBranch');
+    select.innerHTML = '<option value="all">Todas las sucursales</option>';
+    Object.keys(BRANCHES).filter(name => BRANCHES[name].role === 'branch').forEach(name => {
+      const opt = document.createElement('option'); opt.value = name; opt.textContent = name; select.appendChild(opt);
+    });
+  }
+
+  function renderAdminReport() {
+    if (currentRole !== 'admin') return;
+    const period = document.getElementById('adminFilterPeriod').value;
+    const branchFilter = document.getElementById('adminFilterBranch').value;
+
+    let pool = salesCache.filter(s => BRANCHES[s.sucursal] && BRANCHES[s.sucursal].role === 'branch');
+    if (branchFilter !== 'all') pool = pool.filter(s => s.sucursal === branchFilter);
+    const filtered = filterByPeriod(pool, period);
+
+    const totalRev = filtered.reduce((s, o) => s + o.total, 0);
+    const count = filtered.length;
+    const avg = count > 0 ? totalRev / count : 0;
+
+    document.getElementById('adminTotalRevenue').innerText = `Bs. ${totalRev.toFixed(2)}`;
+    document.getElementById('adminTotalOrders').innerText = count;
+    document.getElementById('adminAvgTicket').innerText = `Bs. ${avg.toFixed(2)}`;
+
+    const breakdownEl = document.getElementById('branchBreakdown');
+    const branchNames = Object.keys(BRANCHES).filter(name => BRANCHES[name].role === 'branch');
+    breakdownEl.innerHTML = branchNames.map(name => {
+      const branchSales = filtered.filter(s => s.sucursal === name);
+      const branchTotal = branchSales.reduce((s, o) => s + o.total, 0);
+      return `<div class="branch-chip"><div class="name">${name}</div><div class="amount">Bs. ${branchTotal.toFixed(2)}</div><div class="sub">${branchSales.length} pedido(s)</div></div>`;
+    }).join('');
+
+    const tbody = document.getElementById('adminTableBody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--ninja-muted);">No hay transacciones registradas en este período.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = [...filtered].reverse().map(sale => `
+      <tr>
+        <td>${new Date(sale.fecha).toLocaleString()}</td>
+        <td>${sale.sucursal}</td>
+        <td><b>${sale.atendidoPor}</b></td>
+        <td>${sale.cliente}</td>
+        <td>${sale.metodoPago}</td>
+        <td style="color: var(--ninja-green-bright); font-weight: bold;">Bs. ${sale.total.toFixed(2)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // --- RESPALDO LOCAL MANUAL (adicional a Google Sheets) ---
+  function exportBackup(scope) {
+    const data = scope === 'branch' ? salesCache.filter(s => s.sucursal === currentBranch) : salesCache;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const label = scope === 'branch' ? currentBranch.replace(/\s+/g, '_') : 'consolidado';
+    a.href = url; a.download = `pizza-ninja-ventas-${label}-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    showToast('Copia local exportada');
+  }
+
+  function confirmClearHistory() {
+    if (confirm('Esto borra solo la caché guardada en este navegador (no afecta la hoja de Google Sheets). ¿Continuar?')) {
+      salesCache = [];
+      saveSalesCache();
+      renderAdminReport();
+      showToast('Caché local eliminada');
+    }
+  }
+
+  // --- NOTIFICACIONES TOAST ---
+  function showToast(msg, isError) {
+    const toast = document.getElementById('toast');
+    toast.innerText = msg;
+    toast.classList.toggle('error', !!isError);
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  // Precarga la lista de sucursales y el catálogo al abrir la página
+  loadBranches();
+  loadProducts();
+</script>
+</body>
+</html>
