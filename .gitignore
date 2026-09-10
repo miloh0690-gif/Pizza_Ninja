@@ -1,0 +1,3 @@
+# Nunca subir tus claves ni la carpeta de dependencias
+.env
+node_modules/
